@@ -24,7 +24,9 @@ Selesai. Kalau direktori install (`/usr/local/bin` atau `~/.local/bin`) belum ad
 
 ### Prasyarat
 
-- **Node.js 16+** — `node --version`
+Tidak ada. Binary self-contained — Node.js tidak perlu di-install.
+
+Platform yang didukung: macOS (arm64, x64), Linux (x64, arm64), Windows (x64).
 
 ## Pakai
 
@@ -97,7 +99,7 @@ qalabs uninstall          # hapus binary; tanya konfirmasi sebelum hapus ~/.qala
 QALABS_APP_ID=...
 QALABS_APP_SECRET=...
 QALABS_ADMIN_EMAIL=...
-QALABS_SERVER=http://localhost
+QALABS_SERVER=https://chatgpt.qiscus.com
 
 # Override install dir / versi installer
 QALABS_INSTALL_DIR="$HOME/.local/bin"

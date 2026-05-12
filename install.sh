@@ -15,8 +15,7 @@ REPO="${QALABS_REPO:-Qiscus-Integration/agentlabs_cli}"
 VERSION="${QALABS_VERSION:-latest}"
 
 # --------------------------------------------------------------------
-# 1. Detect OS / arch (informational; bundle is JS so the same artifact
-#    works on every platform with Node 16+)
+# 1. Detect OS / arch and pick the matching asset
 # --------------------------------------------------------------------
 detect_os() {
   case "$(uname -s)" in
@@ -38,28 +37,21 @@ detect_arch() {
 OS="$(detect_os)"
 ARCH="$(detect_arch)"
 
-if [ "$OS" = "unknown" ]; then
-  echo "✗ Unsupported OS: $(uname -s)" >&2
-  exit 1
-fi
+case "$OS-$ARCH" in
+  macos-arm64)   ASSET="qalabs-macos-arm64" ;;
+  macos-x64)     ASSET="qalabs-macos-x64" ;;
+  linux-x64)     ASSET="qalabs-linux-x64" ;;
+  linux-arm64)   ASSET="qalabs-linux-arm64" ;;
+  windows-x64)   ASSET="qalabs-windows-x64.exe" ;;
+  *)
+    echo "✗ Unsupported platform: $OS/$ARCH" >&2
+    echo "  Supported: macos-arm64, macos-x64, linux-x64, linux-arm64, windows-x64" >&2
+    exit 1
+    ;;
+esac
 
 # --------------------------------------------------------------------
-# 2. Require Node.js 16+
-# --------------------------------------------------------------------
-if ! command -v node >/dev/null 2>&1; then
-  echo "✗ Node.js is required but was not found in PATH." >&2
-  echo "  Install Node 16+ from https://nodejs.org and retry." >&2
-  exit 1
-fi
-
-NODE_MAJOR="$(node -p 'process.versions.node.split(".")[0]')"
-if [ "$NODE_MAJOR" -lt 16 ]; then
-  echo "✗ Node $NODE_MAJOR is too old. QaLabs needs Node 16+." >&2
-  exit 1
-fi
-
-# --------------------------------------------------------------------
-# 3. Resolve install directory
+# 2. Resolve install directory
 # --------------------------------------------------------------------
 if [ -n "${QALABS_INSTALL_DIR:-}" ]; then
   INSTALL_DIR="$QALABS_INSTALL_DIR"
@@ -73,58 +65,55 @@ fi
 mkdir -p "$INSTALL_DIR"
 
 # --------------------------------------------------------------------
-# 4. Resolve download URL
+# 3. Resolve download URL
 # --------------------------------------------------------------------
-if [ -n "${QALABS_BUNDLE_URL:-}" ]; then
-  ASSET_URL="$QALABS_BUNDLE_URL"
-elif [ "$VERSION" = "latest" ]; then
-  ASSET_URL="https://github.com/$REPO/releases/latest/download/qalabs.cjs"
+if [ "$VERSION" = "latest" ]; then
+  ASSET_URL="https://github.com/$REPO/releases/latest/download/$ASSET"
 else
-  ASSET_URL="https://github.com/$REPO/releases/download/$VERSION/qalabs.cjs"
+  ASSET_URL="https://github.com/$REPO/releases/download/$VERSION/$ASSET"
 fi
 
 # --------------------------------------------------------------------
-# 5. Download bundle and write launcher
+# 4. Download the native binary
 # --------------------------------------------------------------------
-TMP_BUNDLE="$(mktemp)"
-trap 'rm -f "$TMP_BUNDLE"' EXIT
+TMP_FILE="$(mktemp)"
+trap 'rm -f "$TMP_FILE"' EXIT
 
-echo "→ Detected: $OS/$ARCH, Node $(node -v)"
-echo "→ Downloading qalabs.cjs from $ASSET_URL"
+echo "→ Detected: $OS/$ARCH"
+echo "→ Downloading $ASSET_URL"
 
 if command -v curl >/dev/null 2>&1; then
-  curl -fsSL "$ASSET_URL" -o "$TMP_BUNDLE"
+  curl -fsSL "$ASSET_URL" -o "$TMP_FILE"
 elif command -v wget >/dev/null 2>&1; then
-  wget -q "$ASSET_URL" -O "$TMP_BUNDLE"
+  wget -q "$ASSET_URL" -O "$TMP_FILE"
 else
   echo "✗ Need curl or wget to download." >&2
   exit 1
 fi
 
-# Sanity check (avoid installing a 404 HTML page)
-if ! head -c 100 "$TMP_BUNDLE" | grep -q "^#!.*node"; then
-  echo "✗ Downloaded file does not look like the qalabs bundle." >&2
+# Sanity check (native binary is at least a few MB)
+SIZE="$(wc -c < "$TMP_FILE" | tr -d ' ')"
+if [ "$SIZE" -lt 1000000 ]; then
+  echo "✗ Downloaded file is too small (${SIZE} bytes). Likely a 404 page." >&2
   echo "  Check that release $VERSION exists at https://github.com/$REPO/releases" >&2
   exit 1
 fi
 
-BUNDLE_PATH="$INSTALL_DIR/qalabs.cjs"
-LAUNCHER_PATH="$INSTALL_DIR/qalabs"
+# --------------------------------------------------------------------
+# 5. Install
+# --------------------------------------------------------------------
+if [ "$OS" = "windows" ]; then
+  TARGET="$INSTALL_DIR/qalabs.exe"
+else
+  TARGET="$INSTALL_DIR/qalabs"
+fi
 
-install -m 755 "$TMP_BUNDLE" "$BUNDLE_PATH"
-
-cat > "$LAUNCHER_PATH" <<EOF
-#!/usr/bin/env sh
-exec node "$BUNDLE_PATH" "\$@"
-EOF
-chmod +x "$LAUNCHER_PATH"
+install -m 755 "$TMP_FILE" "$TARGET"
 
 # --------------------------------------------------------------------
 # 6. Verify
 # --------------------------------------------------------------------
-echo "→ Installed:"
-echo "   $BUNDLE_PATH"
-echo "   $LAUNCHER_PATH"
+echo "→ Installed: $TARGET"
 
 case ":$PATH:" in
   *":$INSTALL_DIR:"*) ;;
