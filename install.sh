@@ -1,11 +1,8 @@
 #!/usr/bin/env sh
-# QaLabs installer (gh-CLI based — distribution repo is private)
+# QaLabs installer
 #
 # Usage:
-#   gh release download v1.1.0 --repo Qiscus-Integration/agentlabs_cli --pattern install.sh -O- | sh
-#
-# Or once `gh release download install.sh` is on disk:
-#   sh install.sh
+#   curl -fsSL https://raw.githubusercontent.com/Qiscus-Integration/agentlabs_cli/main/install.sh | sh
 #
 # Environment overrides:
 #   QALABS_VERSION      Release tag to install (default: latest)
@@ -18,22 +15,7 @@ REPO="${QALABS_REPO:-Qiscus-Integration/agentlabs_cli}"
 VERSION="${QALABS_VERSION:-latest}"
 
 # --------------------------------------------------------------------
-# 1. Require gh CLI (the distribution repo is private)
-# --------------------------------------------------------------------
-if ! command -v gh >/dev/null 2>&1; then
-  echo "✗ GitHub CLI (gh) is required but was not found in PATH." >&2
-  echo "  Install from https://cli.github.com/ and retry." >&2
-  exit 1
-fi
-if ! gh auth status >/dev/null 2>&1; then
-  echo "✗ gh CLI is not authenticated." >&2
-  echo "  Run: gh auth login" >&2
-  echo "  (You need 'repo' scope to read release assets from a private repo.)" >&2
-  exit 1
-fi
-
-# --------------------------------------------------------------------
-# 2. Detect OS / arch (informational; bundle is JS so the same artifact
+# 1. Detect OS / arch (informational; bundle is JS so the same artifact
 #    works on every platform with Node 16+)
 # --------------------------------------------------------------------
 detect_os() {
@@ -62,7 +44,7 @@ if [ "$OS" = "unknown" ]; then
 fi
 
 # --------------------------------------------------------------------
-# 3. Require Node.js 16+
+# 2. Require Node.js 16+
 # --------------------------------------------------------------------
 if ! command -v node >/dev/null 2>&1; then
   echo "✗ Node.js is required but was not found in PATH." >&2
@@ -77,7 +59,7 @@ if [ "$NODE_MAJOR" -lt 16 ]; then
 fi
 
 # --------------------------------------------------------------------
-# 4. Resolve install directory
+# 3. Resolve install directory
 # --------------------------------------------------------------------
 if [ -n "${QALABS_INSTALL_DIR:-}" ]; then
   INSTALL_DIR="$QALABS_INSTALL_DIR"
@@ -91,36 +73,35 @@ fi
 mkdir -p "$INSTALL_DIR"
 
 # --------------------------------------------------------------------
-# 5. Download bundle via gh CLI (handles auth transparently)
+# 4. Resolve download URL
 # --------------------------------------------------------------------
-TMP_DIR="$(mktemp -d)"
-trap 'rm -rf "$TMP_DIR"' EXIT
+if [ -n "${QALABS_BUNDLE_URL:-}" ]; then
+  ASSET_URL="$QALABS_BUNDLE_URL"
+elif [ "$VERSION" = "latest" ]; then
+  ASSET_URL="https://github.com/$REPO/releases/latest/download/qalabs.cjs"
+else
+  ASSET_URL="https://github.com/$REPO/releases/download/$VERSION/qalabs.cjs"
+fi
+
+# --------------------------------------------------------------------
+# 5. Download bundle and write launcher
+# --------------------------------------------------------------------
+TMP_BUNDLE="$(mktemp)"
+trap 'rm -f "$TMP_BUNDLE"' EXIT
 
 echo "→ Detected: $OS/$ARCH, Node $(node -v)"
+echo "→ Downloading qalabs.cjs from $ASSET_URL"
 
-if [ "$VERSION" = "latest" ]; then
-  echo "→ Resolving latest release on $REPO"
-  VERSION="$(gh release view --repo "$REPO" --json tagName --jq .tagName)"
-  if [ -z "$VERSION" ]; then
-    echo "✗ Could not resolve latest release tag on $REPO." >&2
-    exit 1
-  fi
-fi
-echo "→ Downloading qalabs.cjs from $REPO release $VERSION"
-
-gh release download "$VERSION" \
-  --repo "$REPO" \
-  --pattern qalabs.cjs \
-  --dir "$TMP_DIR" \
-  --clobber
-
-TMP_BUNDLE="$TMP_DIR/qalabs.cjs"
-if [ ! -f "$TMP_BUNDLE" ]; then
-  echo "✗ Downloaded file not found at $TMP_BUNDLE." >&2
+if command -v curl >/dev/null 2>&1; then
+  curl -fsSL "$ASSET_URL" -o "$TMP_BUNDLE"
+elif command -v wget >/dev/null 2>&1; then
+  wget -q "$ASSET_URL" -O "$TMP_BUNDLE"
+else
+  echo "✗ Need curl or wget to download." >&2
   exit 1
 fi
 
-# Sanity check (avoid installing a 404 HTML page or empty file)
+# Sanity check (avoid installing a 404 HTML page)
 if ! head -c 100 "$TMP_BUNDLE" | grep -q "^#!.*node"; then
   echo "✗ Downloaded file does not look like the qalabs bundle." >&2
   echo "  Check that release $VERSION exists at https://github.com/$REPO/releases" >&2

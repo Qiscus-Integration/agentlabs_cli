@@ -5,7 +5,13 @@
 ## Install
 
 ```sh
-gh release download --repo Qiscus-Integration/agentlabs_cli --pattern install.sh -O- | sh
+curl -fsSL https://raw.githubusercontent.com/Qiscus-Integration/agentlabs_cli/main/install.sh | sh
+```
+
+Atau pakai wget:
+
+```sh
+wget -qO- https://raw.githubusercontent.com/Qiscus-Integration/agentlabs_cli/main/install.sh | sh
 ```
 
 Setelah selesai, jalankan:
@@ -19,7 +25,6 @@ Selesai. Kalau direktori install (`/usr/local/bin` atau `~/.local/bin`) belum ad
 ### Prasyarat
 
 - **Node.js 16+** — `node --version`
-- **GitHub CLI** — `gh --version` (sekali `gh auth login`)
 
 ## Pakai
 
